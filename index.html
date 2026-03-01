@@ -1039,7 +1039,6 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getFirestore, doc, getDoc, setDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
-
 // Your web app's Firebase configuration
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
@@ -1050,9 +1049,8 @@ const firebaseConfig = {
   messagingSenderId: "929567224731",
   appId: "1:929567224731:web:86f0e8483b0addd1a8e73e",
   measurementId: "G-QTJEKT2B2T"
-};
-// ───────────────────────────────────────────────────────────────────────────
-
+ };
+ // ───────────────────────────────────────────────────────────────────────────
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const DOC_REF = doc(db, 'artistos', 'data');
@@ -1135,13 +1133,30 @@ function setSyncStatus(status) {
 
 async function saveAll() {
   setSyncStatus('syncing');
-  const ok = await window._fb.save({ tasks, months, nonNeg });
+  // Snapshot data at save time so listener callbacks can't overwrite mid-flight
+  const snapshot = {
+    tasks: JSON.parse(JSON.stringify(tasks)),
+    months: JSON.parse(JSON.stringify(months)),
+    nonNeg: JSON.parse(JSON.stringify(nonNeg))
+  };
+  const ok = await window._fb.save(snapshot);
   setSyncStatus(ok ? 'synced' : 'error');
+  // Release suppress only after save fully completes
+  _suppressListener = false;
 }
 
+// For frequent inline edits (typing in action inputs) — debounced
 function scheduleSave() {
   clearTimeout(_saveTimeout);
-  _saveTimeout = setTimeout(saveAll, 800);
+  _suppressListener = true;
+  _saveTimeout = setTimeout(saveAll, 1000);
+}
+
+// For structural changes (create/delete, add/remove) — save immediately
+function saveNow() {
+  clearTimeout(_saveTimeout);
+  _suppressListener = true;
+  saveAll();
 }
 
 async function startApp() {
@@ -1285,8 +1300,7 @@ function saveTask() {
   renderTasks();
   renderGroupFilterChips();
   document.getElementById('taskDesc').style.borderColor = '';
-  scheduleSave();
-  setTimeout(() => { _suppressListener = false; }, 1500);
+  saveNow();
 }
 
 function renderGroupFilterChips() {
@@ -1319,17 +1333,13 @@ function toggleTask(id) {
   task.completed = !task.completed;
   renderTasks();
   if (task.completed) celebrate('🎵');
-  _suppressListener = true;
-  scheduleSave();
-  setTimeout(() => { _suppressListener = false; }, 1500);
+  saveNow();
 }
 
 function deleteTask(id) {
   tasks = tasks.filter(t => t.id !== id);
   renderTasks();
-  _suppressListener = true;
-  scheduleSave();
-  setTimeout(() => { _suppressListener = false; }, 1500);
+  saveNow();
 }
 
 function renderTasks() {
@@ -1433,7 +1443,6 @@ function saveMonth() {
   const parseLines = id => document.getElementById(id).value.split('\n').map(s=>s.trim()).filter(Boolean);
   const editId = document.getElementById('editingMonthId').value;
 
-  _suppressListener = true;
   if (editId) {
     const m = months.find(x => x.id === parseInt(editId));
     if (m) {
@@ -1451,16 +1460,13 @@ function saveMonth() {
     months.push(month);
     closeMonthModal(); clearMonthForm(); renderMonthsGrid(); openMonth(month.id);
   }
-  scheduleSave();
-  setTimeout(() => { _suppressListener = false; }, 1500);
+  saveNow();
 }
 
 function deleteMonth(id) {
   if (!confirm('Delete this month and all its data? This cannot be undone.')) return;
   months = months.filter(m => m.id !== id);
-  _suppressListener = true;
-  scheduleSave();
-  setTimeout(() => { _suppressListener = false; }, 1500);
+  saveNow();
   backToMonths();
 }
 
@@ -1616,7 +1622,7 @@ function toggleAction(mid, wi, ai) {
   m.weeks[wi].done[ai] = !m.weeks[wi].done[ai];
   if (m.weeks[wi].done[ai]) celebrate(m.weeks[wi].done.every(Boolean) && m.weeks[wi].actions.every(a=>a.trim()) ? '🔥' : '✨');
   renderWeekRows(m); renderMonthsGrid();
-  _suppressListener = true; scheduleSave(); setTimeout(() => { _suppressListener = false; }, 1500);
+  saveNow();
 }
 
 function updateAction(input) {
@@ -1753,8 +1759,7 @@ function saveNN() {
     nonNeg.push({ id: Date.now(), name, freq, period, category, note, createdAt: new Date().toISOString(), completions: {}, streak: 0, bestStreak: 0 });
   }
   closeNNModal(); renderNN();
-  scheduleSave();
-  setTimeout(() => { _suppressListener = false; }, 1500);
+  saveNow();
   document.getElementById('nnName').style.borderColor = '';
 }
 
@@ -1810,16 +1815,12 @@ function toggleNNCheck(id, idx) {
     nn.bestStreak = Math.max(nn.bestStreak || 0, nn.streak);
     celebrate('🔥');
   }
-  _suppressListener = true;
-  renderNN(); scheduleSave();
-  setTimeout(() => { _suppressListener = false; }, 1500);
+  renderNN(); saveNow();
 }
 
 function deleteNN(id) {
   nonNeg = nonNeg.filter(x => x.id !== id);
-  _suppressListener = true;
-  renderNN(); scheduleSave();
-  setTimeout(() => { _suppressListener = false; }, 1500);
+  renderNN(); saveNow();
 }
 
 function periodLabel(p) { return { day: 'Today', week: 'This Week', month: 'This Month' }[p]; }
