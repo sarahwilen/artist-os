@@ -172,7 +172,7 @@ When you want to make changes:
 |---|---|
 | **GitHub repo** | `github.com/sarahwilen/artist-os` |
 | **Live URL** | `https://sarahwilen.github.io/artist-os` |
-| **Password** | `kiki` |
+| **Password** |  |
 | **Data stored in** | Firebase Firestore (free tier) |
 | **Sync** | Real-time across all your devices |
 
